@@ -5,6 +5,7 @@ import { PrismaClient } from '@prisma/client';
 
 const router = express.Router();
 const prisma = new PrismaClient();
+const JWT_SECRET = process.env.JWT_SECRET || 'exampulse_super_secret_jwt_fallback_key_2026';
 
 // POST /api/auth/register
 router.post('/register', async (req, res) => {
@@ -22,7 +23,7 @@ router.post('/register', async (req, res) => {
       select: { id: true, name: true, email: true },
     });
 
-    const token = jwt.sign({ id: teacher.id, role: 'teacher' }, process.env.JWT_SECRET, { expiresIn: '7d' });
+    const token = jwt.sign({ id: teacher.id, role: 'teacher' }, JWT_SECRET, { expiresIn: '7d' });
     res.json({ token, teacher });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -42,7 +43,7 @@ router.post('/login', async (req, res) => {
     const valid = await bcrypt.compare(password, teacher.passwordHash);
     if (!valid) return res.status(401).json({ error: 'Invalid credentials' });
 
-    const token = jwt.sign({ id: teacher.id, role: 'teacher' }, process.env.JWT_SECRET, { expiresIn: '7d' });
+    const token = jwt.sign({ id: teacher.id, role: 'teacher' }, JWT_SECRET, { expiresIn: '7d' });
     res.json({ token, teacher: { id: teacher.id, name: teacher.name, email: teacher.email } });
   } catch (err) {
     res.status(500).json({ error: err.message });

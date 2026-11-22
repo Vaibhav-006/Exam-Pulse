@@ -95,10 +95,11 @@ export default function ExamRoom() {
       setTimeout(() => setTeacherWarning(''), 9000);
     });
 
-    // Immediate live abort triggered by teacher
-    socket.on('student:aborted', ({ reason }) => {
+    const triggerAbortLockout = (reason) => {
+      if (submitCalledRef.current) return;
       submitCalledRef.current = true;
       clearInterval(frameIntervalRef.current);
+      clearInterval(statusPollRef);
       if (streamRef.current) {
         streamRef.current.getTracks().forEach(t => t.stop());
       }
@@ -107,7 +108,7 @@ export default function ExamRoom() {
       const abortData = {
         submitted: true,
         status: 'aborted',
-        abortReason: reason || 'Terminated live by proctor for integrity violation.',
+        abortReason: reason || 'Terminated live by proctor for academic integrity violation.',
         message: reason || 'Your exam was aborted by the instructor.',
       };
       sessionStorage.setItem('ep_result', JSON.stringify(abortData));
@@ -115,8 +116,33 @@ export default function ExamRoom() {
 
       setTimeout(() => {
         navigate('/exam/complete');
-      }, 3500);
+      }, 3000);
+    };
+
+    // Immediate live abort triggered by teacher via WebSocket
+    socket.on('student:aborted', (data) => {
+      if (data?.sessionId && Number(data.sessionId) !== Number(sessionData.sessionId)) {
+        return;
+      }
+      triggerAbortLockout(data?.reason);
     });
+
+    // Polling heartbeat every 3.5s to guarantee immediate abort and pause detection even if socket dropped
+    const statusPollRef = setInterval(async () => {
+      try {
+        const { data } = await api.get(`/sessions/${sessionData.sessionId}/status`, {
+          params: { studentToken: sessionData.studentToken },
+        });
+
+        if (data.status === 'aborted') {
+          triggerAbortLockout(data.abortReason);
+        } else if (data.testStatus === 'paused') {
+          setTeacherWarning('Notice: The instructor has currently paused new submissions for this exam.');
+        }
+      } catch (err) {
+        // Silently continue
+      }
+    }, 3500);
 
     // Acquire webcam and transmit frame packets
     navigator.mediaDevices.getUserMedia({ video: { width: 320, height: 240 }, audio: false })
@@ -141,6 +167,7 @@ export default function ExamRoom() {
 
     return () => {
       clearInterval(frameIntervalRef.current);
+      clearInterval(statusPollRef);
       socket.disconnect();
       if (streamRef.current) {
         streamRef.current.getTracks().forEach(t => t.stop());

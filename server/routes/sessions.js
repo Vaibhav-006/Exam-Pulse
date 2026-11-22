@@ -127,6 +127,40 @@ router.post('/:id/abort', authMiddleware, async (req, res) => {
   }
 });
 
+// GET /api/sessions/:id/status - student checks their current session status (for abort / pause detection)
+router.get('/:id/status', async (req, res) => {
+  const { studentToken } = req.query;
+  try {
+    const session = await prisma.session.findUnique({
+      where: { id: parseInt(req.params.id) },
+      select: {
+        id: true,
+        status: true,
+        abortReason: true,
+        studentToken: true,
+        test: {
+          select: {
+            status: true,
+            endsAt: true,
+          },
+        },
+      },
+    });
+    if (!session) return res.status(404).json({ error: 'Session not found' });
+    if (studentToken && session.studentToken !== studentToken) {
+      return res.status(403).json({ error: 'Unauthorized session' });
+    }
+    res.json({
+      status: session.status,
+      abortReason: session.abortReason,
+      testStatus: session.test?.status,
+      endsAt: session.test?.endsAt,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/sessions/teacher/:testId - teacher gets all sessions for a test
 router.get('/teacher/:testId', authMiddleware, async (req, res) => {
   try {

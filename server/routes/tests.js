@@ -92,9 +92,11 @@ router.post('/', authMiddleware, async (req, res) => {
 
 // PATCH /api/tests/:id/status - pause / open / close test
 router.patch('/:id/status', authMiddleware, async (req, res) => {
-  const { status } = req.body;
-  if (!['active', 'paused', 'closed', 'draft'].includes(status))
+  const rawStatus = req.body.status;
+  const status = typeof rawStatus === 'string' ? rawStatus.toLowerCase().trim() : '';
+  if (!['active', 'paused', 'closed', 'draft'].includes(status)) {
     return res.status(400).json({ error: 'Invalid status. Allowed: active, paused, closed, draft' });
+  }
 
   try {
     const test = await prisma.test.updateMany({

@@ -151,15 +151,35 @@ export default function MonitorRoom() {
   const handleAbortStudent = async (student, reason) => {
     const finalReason = reason || abortReasonInput.trim() || 'Terminated live by instructor for academic integrity violation.';
 
-    // 1. Emit via socket to immediately lock out student
+    // 1. Instantly update teacher's local view so card turns red with "EXAM ABORTED"
+    setStudents(prev => {
+      const updated = { ...prev };
+      Object.keys(updated).forEach(k => {
+        if (updated[k].sessionId === student.sessionId || k === student.socketId) {
+          updated[k] = { ...updated[k], status: 'aborted', abortReason: finalReason };
+        }
+      });
+      return updated;
+    });
+
+    setViolations(prev => [
+      {
+        studentName: student.studentName,
+        violationType: `⛔ EXAM ABORTED: ${finalReason}`,
+        timestamp: Date.now(),
+      },
+      ...prev.slice(0, 49),
+    ]);
+
+    // 2. Emit via socket to immediately lock out student
     socketRef.current?.emit('teacher:abort_student', {
       targetSocketId: student.socketId,
-      sessionId: student.sessionId,
+      sessionId: Number(student.sessionId) || student.sessionId,
       studentName: student.studentName,
       reason: finalReason,
     });
 
-    // 2. Persist in database
+    // 3. Persist in database
     try {
       await api.post(`/sessions/${student.sessionId}/abort`, { reason: finalReason });
     } catch (err) {

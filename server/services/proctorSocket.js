@@ -99,20 +99,33 @@ export function setupProctorSocket(io) {
     // Teacher ABORTS / TERMINATES a student's test LIVE
     socket.on('teacher:abort_student', ({ targetSocketId, sessionId, studentName, reason }) => {
       if (socket.data.role !== 'teacher') return;
-      console.log(`[ALERT] Teacher terminated student ${studentName} (${sessionId}): ${reason}`);
+      const sId = Number(sessionId) || sessionId;
+      const finalReason = reason || 'Exam aborted live by proctor for academic integrity violation.';
+      console.log(`[ALERT] Teacher terminated student ${studentName} (session: ${sId}): ${finalReason}`);
 
       const abortPayload = {
         socketId: targetSocketId,
-        sessionId,
+        sessionId: sId,
         studentName,
-        reason: reason || 'Exam aborted live by proctor for integrity violation.',
+        reason: finalReason,
         timestamp: Date.now(),
       };
 
-      // 1. Kick student socket immediately
-      io.to(targetSocketId).emit('student:aborted', abortPayload);
+      // 1. Find all active sockets for this session and emit abort directly
+      for (const [id, s] of io.sockets.sockets) {
+        if (s.data.role === 'student' && (s.data.sessionId === sId || String(s.data.sessionId) === String(sessionId))) {
+          s.data.status = 'aborted';
+          s.data.abortReason = finalReason;
+          s.emit('student:aborted', abortPayload);
+        }
+      }
 
-      // 2. Broadcast to all monitors so card updates to "TERMINATED"
+      // 2. Also emit to specific targetSocketId if specified
+      if (targetSocketId) {
+        io.to(targetSocketId).emit('student:aborted', abortPayload);
+      }
+
+      // 3. Broadcast to all monitors so card updates to "TERMINATED"
       if (socket.data.room) {
         socket.to(socket.data.room).emit('student:aborted', abortPayload);
       }

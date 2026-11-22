@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { io } from 'socket.io-client';
+import { createSocket } from '../../lib/socket';
 import api from '../../lib/api';
 import {
   Clock, AlertTriangle, ChevronLeft, ChevronRight, Send,
@@ -78,7 +78,7 @@ export default function ExamRoom() {
     }
 
     // Connect WebSocket proctor relay
-    const socket = io('/');
+    const socket = createSocket();
     socketRef.current = socket;
 
     socket.on('connect', () => {

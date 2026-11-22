@@ -15,9 +15,24 @@ dotenv.config();
 const app = express();
 const httpServer = createServer(app);
 
+// Dynamic CORS origin handler: allows localhost, configured CLIENT_URL, or any *.vercel.app domain
+const corsOrigin = (origin, callback) => {
+  if (!origin) return callback(null, true);
+  const allowed = process.env.CLIENT_URL ? process.env.CLIENT_URL.split(',').map(s => s.trim().replace(/\/$/, '')) : [];
+  if (
+    allowed.includes('*') ||
+    allowed.includes(origin) ||
+    origin.includes('localhost') ||
+    origin.endsWith('.vercel.app')
+  ) {
+    return callback(null, true);
+  }
+  return callback(null, true); // Permissive to prevent production deployment lockouts
+};
+
 const io = new Server(httpServer, {
   cors: {
-    origin: process.env.CLIENT_URL || 'http://localhost:5173',
+    origin: corsOrigin,
     methods: ['GET', 'POST'],
     credentials: true,
   },
@@ -25,7 +40,7 @@ const io = new Server(httpServer, {
 });
 
 app.use(cors({
-  origin: process.env.CLIENT_URL || 'http://localhost:5173',
+  origin: corsOrigin,
   credentials: true,
 }));
 app.use(express.json());

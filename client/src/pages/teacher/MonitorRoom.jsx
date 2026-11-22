@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { io } from 'socket.io-client';
+import { createSocket } from '../../lib/socket';
 import api from '../../lib/api';
 import { useAuth } from '../../contexts/AuthContext';
 import {
@@ -45,7 +45,7 @@ export default function MonitorRoom() {
     api.get(`/tests/${testId}`).then(r => setTest(r.data)).catch(console.error);
 
     // Connect socket
-    const socket = io('/', { auth: { token } });
+    const socket = createSocket({ auth: { token } });
     socketRef.current = socket;
 
     socket.on('connect', () => {

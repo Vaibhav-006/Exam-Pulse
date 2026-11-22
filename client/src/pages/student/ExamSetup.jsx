@@ -72,7 +72,7 @@ export default function ExamSetup() {
           <span className="badge-blue text-xs uppercase tracking-wider mb-2 font-mono">Pre-Exam Integrity Verification</span>
           <h1 className="text-3xl font-extrabold text-white mt-2">{session.test?.title}</h1>
           <p className="text-xs text-gray-400 mt-1">
-            Candidate: <span className="text-white font-semibold">{session.studentName}</span> · Exam Code: <span className="font-mono text-indigo-400">{session.test?.joinCode}</span>
+            Candidate: <span className="text-white font-semibold">{session.studentName}</span> {session.rollNo && <span className="text-indigo-300 font-mono font-bold">({session.rollNo})</span>} · Exam Code: <span className="font-mono text-indigo-400">{session.test?.joinCode}</span>
           </p>
         </div>
 

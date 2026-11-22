@@ -56,12 +56,14 @@ model Session {
   id             Int      @id @default(autoincrement())
   testId         Int
   studentName    String
+  rollNo         String?
   studentToken   String   @unique
   joinedAt       DateTime @default(now())
   submittedAt    DateTime?
   violationCount Int      @default(0)
   status         String   @default("active")
   abortReason    String?
+  allowRetest    Boolean  @default(false)
   score          Int?
   test           Test     @relation(fields: [testId], references: [id], onDelete: Cascade)
   answers        Answer[]

@@ -4,7 +4,7 @@ import api from '../../lib/api';
 import { BookOpen, ArrowRight, AlertCircle, Shield, Clock, Hash } from 'lucide-react';
 
 export default function StudentJoin() {
-  const [form, setForm] = useState({ studentName: '', joinCode: '' });
+  const [form, setForm] = useState({ studentName: '', rollNo: '', joinCode: '' });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
@@ -16,6 +16,7 @@ export default function StudentJoin() {
     try {
       const { data } = await api.post('/sessions/join', {
         studentName: form.studentName.trim(),
+        rollNo: form.rollNo.trim().toUpperCase(),
         joinCode: form.joinCode.trim().toUpperCase(),
       });
       sessionStorage.setItem('ep_session', JSON.stringify(data));
@@ -54,6 +55,11 @@ export default function StudentJoin() {
                 onChange={e => setForm({ ...form, studentName: e.target.value })} required />
             </div>
             <div>
+              <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Student Roll Number / ID *</label>
+              <input className="input font-mono uppercase font-semibold text-indigo-300" placeholder="e.g., 2024CS101" value={form.rollNo}
+                onChange={e => setForm({ ...form, rollNo: e.target.value.toUpperCase() })} required />
+            </div>
+            <div>
               <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Exam Code</label>
               <input
                 className="input text-2xl font-mono tracking-[0.3em] text-center uppercase font-bold text-emerald-400 placeholder-gray-600"
@@ -83,7 +89,7 @@ export default function StudentJoin() {
           ))}
         </div>
 
-        <p className="text-center text-xs text-gray-600 mt-5">Use Chrome or Edge on a desktop computer</p>
+        <p className="text-center text-xs text-gray-500 mt-5">Compatible with mobile phones, tablets, and desktop devices</p>
       </div>
     </div>
   );

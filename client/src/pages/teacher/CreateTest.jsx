@@ -95,7 +95,7 @@ export default function CreateTest() {
       setQuestions(data.extractedQuestions);
       setStep('review');
     } catch (err) {
-      setError(err.response?.data?.error || 'AI question generation failed. Check your Gemini API key in server/.env');
+      setError(err.response?.data?.error || 'AI question generation failed. Check your AI configuration in server/.env');
     } finally {
       setLoading(false);
     }
@@ -174,7 +174,7 @@ export default function CreateTest() {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="font-bold text-white text-base">AI Exam Studio</h1>
-                <span className="badge-blue text-[10px] font-mono">Gemini 3.5 Flash Lite</span>
+                <span className="badge-blue text-[10px] font-mono">ExamPulse AI Engine</span>
               </div>
               <p className="text-xs text-gray-400">Step {step === 'configure' ? '1 of 2: Authoring Mode & Parameters' : '2 of 2: AI Review & Refine'}</p>
             </div>
@@ -363,7 +363,7 @@ export default function CreateTest() {
 
                     <div className="p-3 rounded-xl bg-purple-500/10 border border-purple-500/20 text-xs text-purple-300 flex items-start gap-2.5">
                       <Sparkles className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                      <span>Gemini AI will synthesize questions, distractors, and step-by-step educational explanations automatically.</span>
+                      <span>ExamPulse AI will synthesize questions, distractors, and step-by-step educational explanations automatically.</span>
                     </div>
                   </div>
                 )}

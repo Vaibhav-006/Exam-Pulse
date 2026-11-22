@@ -3,7 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import api from '../../lib/api';
 import {
   ChevronLeft, Download, Users, TrendingUp, CheckCircle, XCircle,
-  AlertTriangle, Search, ShieldCheck, Award, ArrowUpRight
+  AlertTriangle, Search, ShieldCheck, Award, ArrowUpRight, RotateCcw, Ban
 } from 'lucide-react';
 
 export default function TestResults() {
@@ -37,14 +37,26 @@ export default function TestResults() {
   const zeroViolations = results.filter(r => (r.violationCount || 0) === 0).length;
 
   const filteredResults = results.filter(r =>
-    r.studentName.toLowerCase().includes(searchQuery.toLowerCase())
+    r.studentName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (r.rollNo && r.rollNo.toLowerCase().includes(searchQuery.toLowerCase()))
   );
 
+  const handleAllowRetest = async (sessionId, studentName, rollNo) => {
+    try {
+      await api.patch(`/sessions/${sessionId}/allow-retest`);
+      setResults(prev => prev.map(r => r.id === sessionId ? { ...r, allowRetest: true } : r));
+      alert(`Retest permission granted for ${studentName} (Roll: ${rollNo || sessionId})! They can now re-enter the exam.`);
+    } catch (err) {
+      alert(err.response?.data?.error || 'Failed to grant retest permission');
+    }
+  };
+
   const exportCSV = () => {
-    const rows = [['Student Name', 'Score (%)', 'Status', 'Violation Count', 'Submitted Timestamp']];
+    const rows = [['Student Name', 'Roll Number', 'Score (%)', 'Status', 'Violation Count', 'Submitted Timestamp']];
     results.forEach(r => {
       rows.push([
         r.studentName,
+        r.rollNo || 'N/A',
         r.score != null ? `${r.score}%` : 'N/A',
         r.status,
         r.violationCount || 0,
@@ -202,7 +214,14 @@ export default function TestResults() {
                           {r.studentName?.[0]?.toUpperCase()}
                         </div>
                         <div>
-                          <div className="font-semibold">{r.studentName}</div>
+                          <div className="font-semibold flex items-center gap-1.5 flex-wrap">
+                            <span>{r.studentName}</span>
+                            {r.rollNo && (
+                              <span className="text-[10px] font-mono font-bold text-indigo-300 bg-indigo-950/60 border border-indigo-500/30 px-1.5 py-0.5 rounded">
+                                {r.rollNo}
+                              </span>
+                            )}
+                          </div>
                           <div className="text-[10px] text-gray-500 font-mono">ID: #{r.id}</div>
                         </div>
                       </td>
@@ -226,7 +245,27 @@ export default function TestResults() {
                       </td>
 
                       <td className="px-6 py-4">
-                        {isSubmitted ? (
+                        {r.status === 'aborted' ? (
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="badge-red">
+                              <Ban className="w-3 h-3" />
+                              Aborted
+                            </span>
+                            <button
+                              onClick={() => handleAllowRetest(r.id, r.studentName, r.rollNo)}
+                              disabled={r.allowRetest}
+                              className={`text-[10px] px-2 py-0.5 rounded font-bold flex items-center gap-1 transition-all ${
+                                r.allowRetest
+                                  ? 'bg-emerald-600/20 text-emerald-300 border border-emerald-500/30'
+                                  : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow'
+                              }`}
+                              title="Permit candidate to take exam again"
+                            >
+                              <RotateCcw className="w-2.5 h-2.5" />
+                              <span>{r.allowRetest ? 'Retest Allowed' : 'Allow Retest'}</span>
+                            </button>
+                          </div>
+                        ) : isSubmitted ? (
                           passed ? (
                             <span className="badge-green">
                               <CheckCircle className="w-3 h-3" />

@@ -5,7 +5,7 @@ import api from '../../lib/api';
 import { useAuth } from '../../contexts/AuthContext';
 import {
   ChevronLeft, AlertTriangle, CheckCircle2, Wifi, WifiOff, Users, Shield,
-  Maximize2, Volume2, VolumeX, Send, Bell, Clock, Radio, Ban, XCircle, AlertCircle
+  Maximize2, Volume2, VolumeX, Send, Bell, Clock, Radio, Ban, XCircle, AlertCircle, RotateCcw
 } from 'lucide-react';
 
 export default function MonitorRoom() {
@@ -72,20 +72,20 @@ export default function MonitorRoom() {
       }));
     });
 
-    socket.on('student:disconnected', ({ socketId }) => {
-      setStudents(prev => {
-        const updated = { ...prev };
-        if (updated[socketId]) updated[socketId] = { ...updated[socketId], status: 'disconnected' };
-        return updated;
-      });
-    });
-
-    socket.on('student:frame', ({ socketId, sessionId, studentName, frame }) => {
+    socket.on('student:frame', ({ socketId, sessionId, studentName, rollNo, frame }) => {
       setStudents(prev => {
         if (!prev[socketId]) return prev;
         return {
           ...prev,
-          [socketId]: { ...prev[socketId], frame, socketId, sessionId, studentName, lastSeen: Date.now() }
+          [socketId]: {
+            ...prev[socketId],
+            frame,
+            socketId,
+            sessionId,
+            studentName,
+            rollNo: rollNo || prev[socketId].rollNo,
+            lastSeen: Date.now(),
+          }
         };
       });
     });
@@ -189,6 +189,25 @@ export default function MonitorRoom() {
     setAbortReasonInput('');
     setShowAbortPrompt(false);
     setSelectedStudent(null);
+  };
+
+  // Allow aborted student to retest
+  const handleAllowRetest = async (student) => {
+    try {
+      await api.patch(`/sessions/${student.sessionId}/allow-retest`);
+      setStudents(prev => {
+        const updated = { ...prev };
+        Object.keys(updated).forEach(k => {
+          if (updated[k].sessionId === student.sessionId || k === student.socketId) {
+            updated[k] = { ...updated[k], allowRetest: true };
+          }
+        });
+        return updated;
+      });
+      alert(`Retest permission granted for ${student.studentName} (Roll: ${student.rollNo || student.sessionId})! They are now authorized to re-join the exam.`);
+    } catch (err) {
+      alert(err.response?.data?.error || 'Failed to grant retest permission');
+    }
   };
 
   const studentList = Object.values(students);
@@ -374,13 +393,40 @@ export default function MonitorRoom() {
                     {/* Bottom Student Info Bar */}
                     <div className="p-3 bg-[#151822] border-t border-white/[0.04] flex items-center justify-between gap-2">
                       <div className="min-w-0">
-                        <p className="text-xs font-semibold text-white truncate">{s.studentName}</p>
+                        <div className="flex items-center gap-1.5 truncate">
+                          <p className="text-xs font-semibold text-white truncate">{s.studentName}</p>
+                          {s.rollNo && (
+                            <span className="text-[10px] font-mono font-bold text-indigo-300 bg-indigo-900/40 px-1 py-0.5 rounded border border-indigo-500/20">
+                              {s.rollNo}
+                            </span>
+                          )}
+                        </div>
                         <p className="text-[10px] text-gray-400 truncate">
-                          {isAborted ? 'Disqualified' : s.lastViolation ? `⚠️ ${s.lastViolation}` : 'Camera feed normal'}
+                          {isAborted
+                            ? (s.allowRetest ? 'Retest Allowed' : 'Disqualified')
+                            : s.lastViolation
+                            ? `⚠️ ${s.lastViolation}`
+                            : 'Camera feed normal'}
                         </p>
                       </div>
 
-                      {!isAborted && !isSubmitted && (
+                      {isAborted ? (
+                        <div className="flex items-center gap-1 flex-shrink-0">
+                          <button
+                            onClick={() => handleAllowRetest(s)}
+                            disabled={s.allowRetest}
+                            className={`text-[11px] px-2.5 py-1 rounded-lg font-bold flex items-center gap-1 transition-all ${
+                              s.allowRetest
+                                ? 'bg-emerald-600/20 text-emerald-300 border border-emerald-500/30'
+                                : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-md'
+                            }`}
+                            title="Authorize candidate to re-enter exam"
+                          >
+                            <RotateCcw className="w-3 h-3" />
+                            <span>{s.allowRetest ? 'Allowed' : 'Allow Retest'}</span>
+                          </button>
+                        </div>
+                      ) : !isSubmitted ? (
                         <div className="flex items-center gap-1 flex-shrink-0">
                           <button
                             onClick={() => setSelectedStudent(s)}
@@ -400,7 +446,7 @@ export default function MonitorRoom() {
                             Abort
                           </button>
                         </div>
-                      )}
+                      ) : null}
                     </div>
                   </div>
                 );

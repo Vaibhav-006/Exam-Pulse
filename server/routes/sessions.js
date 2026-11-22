@@ -8,13 +8,16 @@ const prisma = new PrismaClient();
 
 // POST /api/sessions/join - student joins a test
 router.post('/join', async (req, res) => {
-  const { joinCode, studentName } = req.body;
-  if (!joinCode || !studentName)
-    return res.status(400).json({ error: 'Join code and name are required' });
+  const { joinCode, studentName, rollNo } = req.body;
+  if (!joinCode || !studentName || !rollNo || !rollNo.trim())
+    return res.status(400).json({ error: 'Join code, full name, and Roll Number are required' });
+
+  const cleanRollNo = rollNo.trim().toUpperCase();
+  const cleanName = studentName.trim();
 
   try {
     const test = await prisma.test.findUnique({
-      where: { joinCode: joinCode.toUpperCase() },
+      where: { joinCode: joinCode.trim().toUpperCase() },
       include: { questions: { orderBy: { orderNum: 'asc' } } },
     });
 
@@ -44,9 +47,37 @@ router.post('/join', async (req, res) => {
       });
     }
 
+    // Check previous attempts with this Roll Number on this test
+    const existingSession = await prisma.session.findFirst({
+      where: { testId: test.id, rollNo: cleanRollNo },
+      orderBy: { joinedAt: 'desc' },
+    });
+
+    if (existingSession) {
+      if (existingSession.status === 'aborted') {
+        if (!existingSession.allowRetest) {
+          return res.status(403).json({
+            error: `Candidate with Roll No. "${cleanRollNo}" was disqualified/aborted by the instructor (${existingSession.abortReason || 'Integrity violation'}). Retest is not permitted unless authorized by your teacher.`,
+            isAborted: true,
+          });
+        }
+        // If allowRetest is true, teacher allowed retest! We create a new attempt.
+      } else if (existingSession.status === 'submitted') {
+        return res.status(403).json({
+          error: `An exam has already been submitted under Roll No. "${cleanRollNo}". Multiple attempts are not permitted.`,
+        });
+      }
+    }
+
     const studentToken = uuidv4();
     const session = await prisma.session.create({
-      data: { testId: test.id, studentName, studentToken },
+      data: {
+        testId: test.id,
+        studentName: cleanName,
+        rollNo: cleanRollNo,
+        studentToken,
+        status: 'active',
+      },
     });
 
     // Return test questions WITHOUT correct answers or explanations
@@ -60,6 +91,8 @@ router.post('/join', async (req, res) => {
     res.json({
       sessionId: session.id,
       studentToken,
+      studentName: cleanName,
+      rollNo: cleanRollNo,
       test: {
         id: test.id,
         title: test.title,
@@ -117,11 +150,40 @@ router.post('/:id/abort', authMiddleware, async (req, res) => {
       data: {
         status: 'aborted',
         abortReason: reason || 'Terminated live by instructor for academic integrity violation',
+        allowRetest: false,
         submittedAt: new Date(),
       },
     });
 
     res.json({ success: true, session: updated });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PATCH /api/sessions/:id/allow-retest - teacher allows aborted candidate to retest
+router.patch('/:id/allow-retest', authMiddleware, async (req, res) => {
+  try {
+    const session = await prisma.session.findUnique({
+      where: { id: parseInt(req.params.id) },
+      include: { test: true },
+    });
+
+    if (!session) return res.status(404).json({ error: 'Session not found' });
+    if (session.test.teacherId !== req.teacher.id) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    const updated = await prisma.session.update({
+      where: { id: session.id },
+      data: { allowRetest: true },
+    });
+
+    res.json({
+      success: true,
+      message: `Retest permission granted for ${session.studentName} (Roll No: ${session.rollNo || 'N/A'})`,
+      session: updated,
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

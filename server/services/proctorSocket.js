@@ -21,6 +21,7 @@ export function setupProctorSocket(io) {
           socketId: s.id,
           sessionId: s.data.sessionId,
           studentName: s.data.studentName,
+          rollNo: s.data.rollNo || null,
           status: s.data.status,
           abortReason: s.data.abortReason || null,
         }));
@@ -29,22 +30,24 @@ export function setupProctorSocket(io) {
     });
 
     // Student joins exam room
-    socket.on('student:join', ({ testId, sessionId, studentName }) => {
+    socket.on('student:join', ({ testId, sessionId, studentName, rollNo }) => {
       const room = `test-${testId}`;
       socket.join(room);
       socket.data.role = 'student';
       socket.data.testId = testId;
       socket.data.sessionId = sessionId;
       socket.data.studentName = studentName;
+      socket.data.rollNo = rollNo || null;
       socket.data.status = 'active';
       socket.data.room = room;
-      console.log(`Student ${studentName} (${sessionId}) joined room ${room}`);
+      console.log(`Student ${studentName} (Roll: ${socket.data.rollNo}, Session: ${sessionId}) joined room ${room}`);
 
       // Notify teacher
       socket.to(room).emit('student:joined', {
         socketId: socket.id,
         sessionId,
         studentName,
+        rollNo: socket.data.rollNo,
         status: 'active',
       });
     });
@@ -58,6 +61,7 @@ export function setupProctorSocket(io) {
         socketId: socket.id,
         sessionId: socket.data.sessionId,
         studentName: socket.data.studentName,
+        rollNo: socket.data.rollNo,
         frame,
         timestamp: Date.now(),
       });

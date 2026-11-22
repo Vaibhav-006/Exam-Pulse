@@ -36,7 +36,19 @@ router.get('/:id', authMiddleware, async (req, res) => {
 
 // POST /api/tests - create new test
 router.post('/', authMiddleware, async (req, res) => {
-  const { title, description, durationMins, totalQuestions, passingScore, difficulty = 'medium', showResultsNow, questions } = req.body;
+  const {
+    title,
+    description,
+    durationMins,
+    totalQuestions,
+    passingScore,
+    difficulty = 'medium',
+    showResultsNow,
+    startsAt,
+    endsAt,
+    questions,
+  } = req.body;
+
   if (!title || !questions || questions.length === 0)
     return res.status(400).json({ error: 'Title and questions are required' });
 
@@ -54,6 +66,8 @@ router.post('/', authMiddleware, async (req, res) => {
         difficulty: difficulty || 'medium',
         showResultsNow: showResultsNow !== false,
         status: 'active',
+        startsAt: startsAt ? new Date(startsAt) : null,
+        endsAt: endsAt ? new Date(endsAt) : null,
         questions: {
           create: questions.map((q, i) => ({
             stem: q.stem,
@@ -76,16 +90,34 @@ router.post('/', authMiddleware, async (req, res) => {
   }
 });
 
-// PATCH /api/tests/:id/status - open/close test
+// PATCH /api/tests/:id/status - pause / open / close test
 router.patch('/:id/status', authMiddleware, async (req, res) => {
   const { status } = req.body;
-  if (!['active', 'closed', 'draft'].includes(status))
-    return res.status(400).json({ error: 'Invalid status' });
+  if (!['active', 'paused', 'closed', 'draft'].includes(status))
+    return res.status(400).json({ error: 'Invalid status. Allowed: active, paused, closed, draft' });
 
   try {
     const test = await prisma.test.updateMany({
       where: { id: parseInt(req.params.id), teacherId: req.teacher.id },
       data: { status },
+    });
+    if (test.count === 0) return res.status(404).json({ error: 'Test not found' });
+    res.json({ success: true, status });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PATCH /api/tests/:id/schedule - update scheduled time window
+router.patch('/:id/schedule', authMiddleware, async (req, res) => {
+  const { startsAt, endsAt } = req.body;
+  try {
+    const test = await prisma.test.updateMany({
+      where: { id: parseInt(req.params.id), teacherId: req.teacher.id },
+      data: {
+        startsAt: startsAt ? new Date(startsAt) : null,
+        endsAt: endsAt ? new Date(endsAt) : null,
+      },
     });
     if (test.count === 0) return res.status(404).json({ error: 'Test not found' });
     res.json({ success: true });
@@ -106,15 +138,48 @@ router.delete('/:id', authMiddleware, async (req, res) => {
   }
 });
 
-// GET /api/tests/join/:code - student joins test (no auth needed)
+// GET /api/tests/join/:code - student checks test validity (no auth needed)
 router.get('/join/:code', async (req, res) => {
   try {
     const test = await prisma.test.findUnique({
       where: { joinCode: req.params.code.toUpperCase() },
-      select: { id: true, title: true, description: true, durationMins: true, totalQuestions: true, status: true, passingScore: true },
+      select: {
+        id: true,
+        title: true,
+        description: true,
+        durationMins: true,
+        totalQuestions: true,
+        status: true,
+        passingScore: true,
+        startsAt: true,
+        endsAt: true,
+      },
     });
-    if (!test) return res.status(404).json({ error: 'Invalid test code' });
-    if (test.status !== 'active') return res.status(403).json({ error: 'This test is not currently active' });
+
+    if (!test) return res.status(404).json({ error: 'Invalid test code. Please check with your teacher.' });
+
+    if (test.status === 'paused') {
+      return res.status(403).json({ error: 'This exam is currently paused by the instructor. Access is suspended.' });
+    }
+    if (test.status === 'closed') {
+      return res.status(403).json({ error: 'This exam has ended and is now closed.' });
+    }
+    if (test.status !== 'active') {
+      return res.status(403).json({ error: 'This exam is currently in draft mode and not accepting attempts.' });
+    }
+
+    const now = new Date();
+    if (test.startsAt && now < new Date(test.startsAt)) {
+      return res.status(403).json({
+        error: `This exam is scheduled to open on ${new Date(test.startsAt).toLocaleString()}. You cannot attempt it yet.`,
+      });
+    }
+    if (test.endsAt && now > new Date(test.endsAt)) {
+      return res.status(403).json({
+        error: `This exam has expired. The scheduled window closed on ${new Date(test.endsAt).toLocaleString()}.`,
+      });
+    }
+
     res.json(test);
   } catch (err) {
     res.status(500).json({ error: err.message });

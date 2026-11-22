@@ -19,14 +19,37 @@ router.post('/join', async (req, res) => {
     });
 
     if (!test) return res.status(404).json({ error: 'Invalid test code' });
-    if (test.status !== 'active') return res.status(403).json({ error: 'This test is not currently active' });
+
+    // Status checks
+    if (test.status === 'paused') {
+      return res.status(403).json({ error: 'This exam is currently paused by the instructor. Access is suspended.' });
+    }
+    if (test.status === 'closed') {
+      return res.status(403).json({ error: 'This exam has ended and is now closed.' });
+    }
+    if (test.status !== 'active') {
+      return res.status(403).json({ error: 'This exam is not currently accepting attempts.' });
+    }
+
+    // Schedule window checks
+    const now = new Date();
+    if (test.startsAt && now < new Date(test.startsAt)) {
+      return res.status(403).json({
+        error: `This exam is scheduled to open on ${new Date(test.startsAt).toLocaleString()}. You cannot attempt it yet.`
+      });
+    }
+    if (test.endsAt && now > new Date(test.endsAt)) {
+      return res.status(403).json({
+        error: `This exam has expired. The scheduled window closed on ${new Date(test.endsAt).toLocaleString()}.`
+      });
+    }
 
     const studentToken = uuidv4();
     const session = await prisma.session.create({
       data: { testId: test.id, studentName, studentToken },
     });
 
-    // Return test questions WITHOUT correct answers
+    // Return test questions WITHOUT correct answers or explanations
     const sanitizedQuestions = test.questions.map(q => ({
       id: q.id,
       stem: q.stem,
@@ -45,6 +68,8 @@ router.post('/join', async (req, res) => {
         totalQuestions: test.totalQuestions,
         passingScore: test.passingScore,
         showResultsNow: test.showResultsNow,
+        startsAt: test.startsAt,
+        endsAt: test.endsAt,
       },
       questions: sanitizedQuestions,
     });
@@ -68,6 +93,35 @@ router.post('/:id/violation', async (req, res) => {
     });
 
     res.json({ violationCount: updated.violationCount });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/sessions/:id/abort - teacher aborts student session live
+router.post('/:id/abort', authMiddleware, async (req, res) => {
+  const { reason } = req.body;
+  try {
+    const session = await prisma.session.findUnique({
+      where: { id: parseInt(req.params.id) },
+      include: { test: true },
+    });
+
+    if (!session) return res.status(404).json({ error: 'Session not found' });
+    if (session.test.teacherId !== req.teacher.id) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    const updated = await prisma.session.update({
+      where: { id: session.id },
+      data: {
+        status: 'aborted',
+        abortReason: reason || 'Terminated live by instructor for academic integrity violation',
+        submittedAt: new Date(),
+      },
+    });
+
+    res.json({ success: true, session: updated });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

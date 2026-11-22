@@ -1,12 +1,10 @@
 // WebSocket room management for proctoring
-// Rooms are keyed by testId
+// Rooms are keyed by testId: 'test-{testId}'
 // Teacher joins as 'teacher-{testId}'
 // Students join as 'student-{sessionId}'
 
 export function setupProctorSocket(io) {
   io.on('connection', (socket) => {
-    console.log('Socket connected:', socket.id);
-
     // Teacher joins monitoring room
     socket.on('teacher:join', ({ testId, teacherToken }) => {
       const room = `test-${testId}`;
@@ -15,12 +13,18 @@ export function setupProctorSocket(io) {
       socket.data.testId = testId;
       socket.data.room = room;
       console.log(`Teacher joined room ${room}`);
-      
-      // Notify teacher of current students in room
+
+      // Notify teacher of current active students in room
       const studentsInRoom = [...io.sockets.sockets.values()]
         .filter(s => s.data.role === 'student' && s.data.testId === testId)
-        .map(s => ({ socketId: s.id, sessionId: s.data.sessionId, studentName: s.data.studentName, status: s.data.status }));
-      
+        .map(s => ({
+          socketId: s.id,
+          sessionId: s.data.sessionId,
+          studentName: s.data.studentName,
+          status: s.data.status,
+          abortReason: s.data.abortReason || null,
+        }));
+
       socket.emit('room:students', studentsInRoom);
     });
 
@@ -35,7 +39,7 @@ export function setupProctorSocket(io) {
       socket.data.status = 'active';
       socket.data.room = room;
       console.log(`Student ${studentName} (${sessionId}) joined room ${room}`);
-      
+
       // Notify teacher
       socket.to(room).emit('student:joined', {
         socketId: socket.id,
@@ -64,7 +68,7 @@ export function setupProctorSocket(io) {
       if (socket.data.role !== 'student') return;
       const room = socket.data.room;
       console.log(`Violation from ${socket.data.studentName}: ${violationType}`);
-      
+
       // Alert teacher
       socket.to(room).emit('student:violation', {
         socketId: socket.id,
@@ -92,6 +96,29 @@ export function setupProctorSocket(io) {
       io.to(targetSocketId).emit('teacher:warning', { message });
     });
 
+    // Teacher ABORTS / TERMINATES a student's test LIVE
+    socket.on('teacher:abort_student', ({ targetSocketId, sessionId, studentName, reason }) => {
+      if (socket.data.role !== 'teacher') return;
+      console.log(`[ALERT] Teacher terminated student ${studentName} (${sessionId}): ${reason}`);
+
+      const abortPayload = {
+        socketId: targetSocketId,
+        sessionId,
+        studentName,
+        reason: reason || 'Exam aborted live by proctor for integrity violation.',
+        timestamp: Date.now(),
+      };
+
+      // 1. Kick student socket immediately
+      io.to(targetSocketId).emit('student:aborted', abortPayload);
+
+      // 2. Broadcast to all monitors so card updates to "TERMINATED"
+      if (socket.data.room) {
+        socket.to(socket.data.room).emit('student:aborted', abortPayload);
+      }
+      socket.emit('student:aborted', abortPayload);
+    });
+
     // Disconnect
     socket.on('disconnect', () => {
       if (socket.data.role === 'student' && socket.data.room) {
@@ -101,7 +128,6 @@ export function setupProctorSocket(io) {
           studentName: socket.data.studentName,
         });
       }
-      console.log('Socket disconnected:', socket.id);
     });
   });
 }

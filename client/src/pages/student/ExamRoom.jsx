@@ -26,6 +26,7 @@ export default function ExamRoom() {
   const [violationCount, setViolationCount] = useState(0);
   const [violationMsg, setViolationMsg] = useState('');
   const [teacherWarning, setTeacherWarning] = useState('');
+  const [abortedNotice, setAbortedNotice] = useState(null);
   const [showConfirmSubmit, setShowConfirmSubmit] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -92,6 +93,29 @@ export default function ExamRoom() {
     socket.on('teacher:warning', ({ message }) => {
       setTeacherWarning(message);
       setTimeout(() => setTeacherWarning(''), 9000);
+    });
+
+    // Immediate live abort triggered by teacher
+    socket.on('student:aborted', ({ reason }) => {
+      submitCalledRef.current = true;
+      clearInterval(frameIntervalRef.current);
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(t => t.stop());
+      }
+      document.exitFullscreen?.().catch(() => {});
+
+      const abortData = {
+        submitted: true,
+        status: 'aborted',
+        abortReason: reason || 'Terminated live by proctor for integrity violation.',
+        message: reason || 'Your exam was aborted by the instructor.',
+      };
+      sessionStorage.setItem('ep_result', JSON.stringify(abortData));
+      setAbortedNotice(reason || 'Exam session terminated by proctor.');
+
+      setTimeout(() => {
+        navigate('/exam/complete');
+      }, 3500);
     });
 
     // Acquire webcam and transmit frame packets
@@ -248,6 +272,25 @@ export default function ExamRoom() {
     <div className="min-h-screen bg-[#07090E] text-gray-100 flex flex-col select-none h-screen overflow-hidden">
       {/* Hidden WebRTC Canvas */}
       <canvas ref={canvasRef} className="hidden" />
+
+      {/* Live Abort Fullscreen Takeover */}
+      {abortedNotice && (
+        <div className="fixed inset-0 z-50 bg-[#160608] flex flex-col items-center justify-center p-8 text-center animate-fadeIn">
+          <div className="w-20 h-20 rounded-3xl bg-red-600/20 border-2 border-red-500 flex items-center justify-center mb-5 animate-pulse">
+            <AlertCircle className="w-12 h-12 text-red-400" />
+          </div>
+          <h1 className="text-2xl md:text-3xl font-black text-white tracking-wide uppercase mb-2">
+            Exam Terminated by Proctor
+          </h1>
+          <p className="text-xs text-red-200/80 max-w-md leading-relaxed mb-4">
+            Your instructor has terminated your exam session live due to an integrity violation.
+          </p>
+          <div className="bg-black/50 border border-red-500/40 px-4 py-2 rounded-xl text-xs font-mono text-red-300 mb-6">
+            Proctor Notice: {abortedNotice}
+          </div>
+          <p className="text-xs text-red-400/80 animate-pulse">Session locked out. Redirecting...</p>
+        </div>
+      )}
 
       {/* Top Urgent Violation Toast */}
       {violationMsg && (

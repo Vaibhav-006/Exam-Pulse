@@ -39,7 +39,27 @@ export default function ExamComplete() {
       <div className={`w-full transition-all duration-300 relative z-10 ${showReview ? 'max-w-4xl' : 'max-w-lg'}`}>
         {/* Score & Completion Card */}
         <div className="card-glass p-8 md:p-10 text-center border border-white/10 shadow-2xl">
-          {result?.submitted ? (
+          {result?.status === 'aborted' ? (
+            <>
+              <div className="w-20 h-20 rounded-3xl mx-auto mb-6 flex items-center justify-center border shadow-xl bg-red-500/20 text-red-400 border-red-500/30">
+                <AlertTriangle className="w-10 h-10" />
+              </div>
+              <h1 className="text-2xl md:text-3xl font-extrabold text-white">
+                Exam Session Disqualified
+              </h1>
+              <p className="text-xs text-red-400 mt-1 font-semibold">Terminated Live by Proctor</p>
+
+              <div className="my-6 p-5 rounded-2xl bg-red-950/40 border border-red-500/30 text-xs text-red-200 text-left space-y-2">
+                <div className="font-bold text-red-300 uppercase tracking-wider text-[11px]">Proctor Disqualification Notice:</div>
+                <p className="leading-relaxed">{result.abortReason || result.message || 'Academic integrity violation detected.'}</p>
+              </div>
+
+              <div className="flex items-center justify-center gap-2 text-xs text-gray-500 mb-6">
+                <ShieldCheck className="w-4 h-4 text-red-400" />
+                <span>Incident logged to instructor ledger</span>
+              </div>
+            </>
+          ) : result?.submitted ? (
             <>
               {/* Header Icon */}
               <div className={`w-20 h-20 rounded-3xl mx-auto mb-6 flex items-center justify-center border shadow-xl ${

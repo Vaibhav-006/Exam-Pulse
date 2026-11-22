@@ -3,8 +3,8 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = "file:./exampulse.db"
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 model Teacher {
@@ -28,6 +28,8 @@ model Test {
   difficulty      String?   @default("medium")
   status          String    @default("draft")
   showResultsNow  Boolean   @default(true)
+  startsAt        DateTime?
+  endsAt          DateTime?
   createdAt       DateTime  @default(now())
   teacher         Teacher   @relation(fields: [teacherId], references: [id])
   questions       Question[]
@@ -59,6 +61,7 @@ model Session {
   submittedAt    DateTime?
   violationCount Int      @default(0)
   status         String   @default("active")
+  abortReason    String?
   score          Int?
   test           Test     @relation(fields: [testId], references: [id], onDelete: Cascade)
   answers        Answer[]

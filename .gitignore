@@ -1,0 +1,51 @@
+# Dependencies
+node_modules/
+*/node_modules/
+
+# Environment Variables & Secrets
+.env
+.env.local
+.env.*.local
+*.env
+
+# SQLite Database Files
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+exampulse.db
+exampulse.db-journal
+server/prisma/exampulse.db*
+server/exampulse.db*
+
+# User Uploaded Documents
+server/uploads/*
+!server/uploads/.gitkeep
+
+# Production & Build Outputs
+dist/
+client/dist/
+build/
+out/
+.vite/
+client/.vite/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Editor & OS Artifacts
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+.DS_Store
+Thumbs.db
+Desktop.ini

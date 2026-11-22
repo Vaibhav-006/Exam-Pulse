@@ -1,0 +1,77 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./exampulse.db"
+}
+
+model Teacher {
+  id           Int      @id @default(autoincrement())
+  email        String   @unique
+  passwordHash String
+  name         String
+  createdAt    DateTime @default(now())
+  tests        Test[]
+}
+
+model Test {
+  id              Int       @id @default(autoincrement())
+  teacherId       Int
+  title           String
+  description     String?
+  joinCode        String    @unique
+  durationMins    Int       @default(30)
+  totalQuestions  Int       @default(10)
+  passingScore    Int       @default(50)
+  difficulty      String?   @default("medium")
+  status          String    @default("draft")
+  showResultsNow  Boolean   @default(true)
+  createdAt       DateTime  @default(now())
+  teacher         Teacher   @relation(fields: [teacherId], references: [id])
+  questions       Question[]
+  sessions        Session[]
+}
+
+model Question {
+  id            Int      @id @default(autoincrement())
+  testId        Int
+  stem          String
+  optionA       String
+  optionB       String
+  optionC       String
+  optionD       String
+  correctOption String
+  explanation   String?
+  difficulty    String?  @default("medium")
+  orderNum      Int      @default(0)
+  test          Test     @relation(fields: [testId], references: [id], onDelete: Cascade)
+  answers       Answer[]
+}
+
+model Session {
+  id             Int      @id @default(autoincrement())
+  testId         Int
+  studentName    String
+  studentToken   String   @unique
+  joinedAt       DateTime @default(now())
+  submittedAt    DateTime?
+  violationCount Int      @default(0)
+  status         String   @default("active")
+  score          Int?
+  test           Test     @relation(fields: [testId], references: [id], onDelete: Cascade)
+  answers        Answer[]
+}
+
+model Answer {
+  id            Int      @id @default(autoincrement())
+  sessionId     Int
+  questionId    Int
+  chosenOption  String?
+  isCorrect     Boolean  @default(false)
+  session       Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  question      Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, questionId])
+}

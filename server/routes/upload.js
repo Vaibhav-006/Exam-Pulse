@@ -2,7 +2,7 @@ import express from 'express';
 import multer from 'multer';
 import path from 'path';
 import { authMiddleware } from '../middleware/auth.js';
-import { parseDocument } from '../services/documentParser.js';
+import { parseDocument, extractDirectMCQs } from '../services/documentParser.js';
 import { generateMCQs, generateMCQsByTopic, regenerateSingleQuestion } from '../services/aiService.js';
 
 const router = express.Router();
@@ -30,7 +30,7 @@ const upload = multer({
 router.post('/document', authMiddleware, upload.single('document'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
 
-  const { numQuestions = 10, topic = '', difficulty = 'medium' } = req.body;
+  const { numQuestions, topic = '', difficulty = 'medium' } = req.body;
 
   try {
     const rawText = await parseDocument(
@@ -43,13 +43,36 @@ router.post('/document', authMiddleware, upload.single('document'), async (req, 
       return res.status(400).json({ error: 'Could not extract sufficient text from the document. Please verify the file.' });
     }
 
-    const mcqs = await generateMCQs(rawText, parseInt(numQuestions), topic, difficulty);
+    // Fast Path: Check if document already has structured MCQs (e.g. Question Bank PDF)
+    const directQuestions = extractDirectMCQs(rawText, difficulty);
+    const potentialQuestionMatches = (rawText.match(/(?:^|\n)\s*(?:Q(?:uestion)?\.?\s*\d+[\.:\)\-–]|\b\d+[\.:\)\-–]\s+[A-Za-z])/gi) || []).length;
+
+    const isSolidDirectExtraction = directQuestions && directQuestions.length >= 3 &&
+      (potentialQuestionMatches <= 5 || directQuestions.length >= potentialQuestionMatches * 0.4);
+
+    if (isSolidDirectExtraction) {
+      const finalQuestions = (numQuestions && parseInt(numQuestions) > 0)
+        ? directQuestions.slice(0, parseInt(numQuestions))
+        : directQuestions;
+      return res.json({
+        success: true,
+        extractedQuestions: finalQuestions,
+        totalGenerated: finalQuestions.length,
+        method: 'direct_question_bank',
+        difficulty,
+      });
+    }
+
+    // AI Path: Synthesize from raw unstructured content using Gemini
+    const count = numQuestions ? parseInt(numQuestions) : null;
+    const mcqs = await generateMCQs(rawText, count, topic, difficulty);
 
     res.json({
       success: true,
       extractedQuestions: mcqs,
       totalGenerated: mcqs.length,
-      requestedCount: parseInt(numQuestions),
+      method: 'ai_synthesis',
+      requestedCount: count || 'all',
       difficulty,
     });
   } catch (err) {

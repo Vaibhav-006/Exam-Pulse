@@ -4,7 +4,8 @@ import api from '../../lib/api';
 import {
   BookOpen, Upload, Sparkles, ChevronLeft, Pencil, Trash2, Check,
   AlertCircle, Loader2, ArrowRight, Settings, FileText, CheckCircle2,
-  RefreshCw, Lightbulb, Zap, HelpCircle, Layers, Sliders
+  RefreshCw, Lightbulb, Zap, HelpCircle, Layers, Sliders, Shuffle,
+  Plus, Lock
 } from 'lucide-react';
 
 const DIFFICULTIES = [
@@ -41,6 +42,10 @@ export default function CreateTest() {
     durationMins: 30,
     passingScore: 50,
     showResultsNow: true,
+    shuffleQuestions: true,
+    shuffleOptions: true,
+    enableQuestionPool: false,
+    questionsPerStudent: 10,
   });
 
   const handleFileChange = (e) => {
@@ -75,7 +80,6 @@ export default function CreateTest() {
       if (sourceMode === 'document') {
         const formData = new FormData();
         formData.append('document', file);
-        formData.append('numQuestions', numQuestions);
         formData.append('topic', focusTopic);
         formData.append('difficulty', difficulty);
 
@@ -90,6 +94,11 @@ export default function CreateTest() {
           difficulty,
         });
         data = res.data;
+      }
+
+      if (!data.extractedQuestions || data.extractedQuestions.length === 0) {
+        setError('No valid questions could be extracted from this file. Please verify the document text.');
+        return;
       }
 
       setQuestions(data.extractedQuestions);
@@ -141,6 +150,18 @@ export default function CreateTest() {
     setQuestions(prev => prev.filter((_, i) => i !== idx));
   };
 
+  const handleAddNewBlankQuestion = () => {
+    const blank = {
+      stem: 'New custom question...',
+      options: { A: 'Option A', B: 'Option B', C: 'Option C', D: 'Option D' },
+      correct: 'A',
+      explanation: '',
+      difficulty: difficulty || 'medium'
+    };
+    setQuestions(prev => [...prev, blank]);
+    setEditingIdx(questions.length);
+  };
+
   const handlePublish = async () => {
     if (questions.length === 0) {
       setError('You need at least one question to publish.');
@@ -149,9 +170,15 @@ export default function CreateTest() {
     setLoading(true);
     setError('');
     try {
+      const isDocument = sourceMode === 'document';
       await api.post('/tests', {
         ...testConfig,
         difficulty,
+        shuffleQuestions: testConfig.shuffleQuestions,
+        shuffleOptions: testConfig.shuffleOptions,
+        questionsPerStudent: (isDocument && testConfig.enableQuestionPool)
+          ? Math.min(questions.length, Math.max(1, parseInt(testConfig.questionsPerStudent) || 10))
+          : null,
         questions,
       });
       navigate('/teacher/dashboard');
@@ -275,6 +302,96 @@ export default function CreateTest() {
                 </div>
               </div>
 
+              {/* Anti-Cheating & Randomization Suite */}
+              <div className="card space-y-3">
+                <div className="flex items-center gap-2 mb-1">
+                  <div className="w-8 h-8 rounded-lg bg-purple-600/20 border border-purple-500/30 flex items-center justify-center">
+                    <Shuffle className="w-4 h-4 text-purple-400" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-white text-xs uppercase tracking-wider">Anti-Cheating & Shuffling</h3>
+                    <p className="text-[10px] text-gray-500">Prevent peer collusion with per-candidate randomization</p>
+                  </div>
+                </div>
+
+                {/* Question Shuffling Toggle */}
+                <label className="flex items-start gap-3 p-3 bg-white/[0.02] border border-white/[0.06] rounded-xl cursor-pointer hover:bg-white/[0.04] transition-colors">
+                  <input
+                    type="checkbox"
+                    checked={testConfig.shuffleQuestions}
+                    onChange={e => setTestConfig({ ...testConfig, shuffleQuestions: e.target.checked })}
+                    className="w-4 h-4 rounded text-purple-600 bg-[#12141C] border-white/20 focus:ring-0 mt-0.5"
+                  />
+                  <div>
+                    <span className="text-xs font-semibold text-gray-200 block">Shuffle Question Sequence</span>
+                    <span className="text-[10px] text-gray-500">Each candidate gets questions in a unique randomized order.</span>
+                  </div>
+                </label>
+
+                {/* Option Shuffling Toggle */}
+                <label className="flex items-start gap-3 p-3 bg-white/[0.02] border border-white/[0.06] rounded-xl cursor-pointer hover:bg-white/[0.04] transition-colors">
+                  <input
+                    type="checkbox"
+                    checked={testConfig.shuffleOptions}
+                    onChange={e => setTestConfig({ ...testConfig, shuffleOptions: e.target.checked })}
+                    className="w-4 h-4 rounded text-purple-600 bg-[#12141C] border-white/20 focus:ring-0 mt-0.5"
+                  />
+                  <div>
+                    <span className="text-xs font-semibold text-gray-200 block">Shuffle Option Sequence (A / B / C / D)</span>
+                    <span className="text-[10px] text-gray-500">Scramble options so answer letters cannot be copied.</span>
+                  </div>
+                </label>
+
+                {/* Question Pool / Dynamic Subset Toggle */}
+                <div className="p-3 bg-white/[0.02] border border-white/[0.06] rounded-xl space-y-3">
+                  <label className={`flex items-start gap-3 ${sourceMode === 'document' ? 'cursor-pointer' : 'cursor-not-allowed opacity-75'}`}>
+                    <input
+                      type="checkbox"
+                      disabled={sourceMode !== 'document'}
+                      checked={sourceMode === 'document' && testConfig.enableQuestionPool}
+                      onChange={e => setTestConfig({ ...testConfig, enableQuestionPool: e.target.checked })}
+                      className="w-4 h-4 rounded text-indigo-600 bg-[#12141C] border-white/20 focus:ring-0 mt-0.5 disabled:opacity-40"
+                    />
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-semibold text-gray-200 block">Dynamic Question Pool / Subset</span>
+                        {sourceMode === 'document' ? (
+                          <span className="badge-green text-[9px] font-semibold py-0.5 px-1.5 flex items-center gap-1">
+                            📄 PDF Question Bank
+                          </span>
+                        ) : (
+                          <span className="badge-yellow text-[9px] font-semibold py-0.5 px-1.5 flex items-center gap-1">
+                            <Lock className="w-2.5 h-2.5" /> PDF / Document Only
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-[10px] text-gray-400 block mt-1 leading-relaxed">
+                        {sourceMode === 'document'
+                          ? 'Extract questions from your uploaded PDF/DOCX and deliver a unique random subset to each student without calling AI again.'
+                          : 'Disabled for Topic Prompt generation to avoid burning excessive AI tokens. Upload a PDF/Document question bank to use dynamic question pools.'}
+                      </span>
+                    </div>
+                  </label>
+
+                  {sourceMode === 'document' && testConfig.enableQuestionPool && (
+                    <div className="pt-2 border-t border-white/[0.06] flex items-center justify-between gap-3 animate-fadeIn">
+                      <div>
+                        <span className="text-xs font-semibold text-indigo-300 block">Questions Per Candidate</span>
+                        <span className="text-[10px] text-gray-400">Randomly selected from total pool in document</span>
+                      </div>
+                      <input
+                        type="number"
+                        min={1}
+                        max={100}
+                        className="input text-xs font-mono font-bold text-center w-24 py-1.5"
+                        value={testConfig.questionsPerStudent}
+                        onChange={e => setTestConfig({ ...testConfig, questionsPerStudent: parseInt(e.target.value) || 5 })}
+                      />
+                    </div>
+                  )}
+                </div>
+              </div>
+
               {/* Difficulty Level Selector */}
               <div className="card">
                 <div className="flex items-center justify-between mb-3">
@@ -317,7 +434,10 @@ export default function CreateTest() {
                 <div className="flex items-center gap-2 p-1 bg-[#12141C] border border-white/[0.06] rounded-xl mb-6">
                   <button
                     type="button"
-                    onClick={() => setSourceMode('topic')}
+                    onClick={() => {
+                      setSourceMode('topic');
+                      setTestConfig(prev => ({ ...prev, enableQuestionPool: false }));
+                    }}
                     className={`flex-1 py-2 px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-2 transition-all ${
                       sourceMode === 'topic'
                         ? 'bg-indigo-600 text-white shadow'
@@ -338,7 +458,7 @@ export default function CreateTest() {
                     }`}
                   >
                     <Upload className="w-3.5 h-3.5 text-blue-300" />
-                    <span>Upload Document File</span>
+                    <span>Upload Document File (PDF / DOCX)</span>
                   </button>
                 </div>
 
@@ -394,8 +514,8 @@ export default function CreateTest() {
                           <div className="w-12 h-12 rounded-2xl bg-white/5 text-gray-400 flex items-center justify-center mb-2 border border-white/5">
                             <Upload className="w-6 h-6" />
                           </div>
-                          <p className="font-medium text-white text-sm">Upload PDF, DOCX, or TXT</p>
-                          <p className="text-xs text-gray-500 mt-1">Upload lecture notes, textbooks, or past papers</p>
+                          <p className="font-medium text-white text-sm">Upload Question Bank PDF, DOCX, or TXT</p>
+                          <p className="text-xs text-gray-500 mt-1">Upload question papers, past exams, or question sheets</p>
                         </div>
                       )}
                     </div>
@@ -412,29 +532,47 @@ export default function CreateTest() {
                   </div>
                 )}
 
-                {/* Number of MCQs Range Slider */}
-                <div className="mt-6 pt-5 border-t border-white/[0.06]">
-                  <div className="flex items-center justify-between mb-2">
-                    <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Number of MCQs</label>
-                    <span className="text-xs font-mono font-bold text-indigo-400 bg-indigo-600/15 border border-indigo-500/20 px-2.5 py-0.5 rounded-lg">
-                      {numQuestions} Questions
-                    </span>
+                {/* Auto Full Extraction Info for Document / PDF */}
+                {sourceMode === 'document' && (
+                  <div className="mt-6 p-4 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 flex items-start gap-3">
+                    <Sparkles className="w-5 h-5 text-indigo-400 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <span className="text-xs font-bold text-white block mb-0.5">Comprehensive Question Bank Extraction</span>
+                      <span className="text-[11px] text-gray-300 leading-relaxed block">
+                        ExamPulse will automatically detect and extract <strong>all available MCQs</strong> from your uploaded PDF/DOCX file.
+                      </span>
+                      <span className="text-[10px] text-indigo-300 block mt-1.5 font-medium">
+                        💡 You can select how many questions each student will get in the <strong>Dynamic Question Pool</strong> panel on the left.
+                      </span>
+                    </div>
                   </div>
-                  <input
-                    type="range"
-                    min={3}
-                    max={50}
-                    step={1}
-                    value={numQuestions}
-                    onChange={e => setNumQuestions(parseInt(e.target.value))}
-                    className="w-full accent-indigo-500 bg-white/10 rounded-lg cursor-pointer h-2"
-                  />
-                  <div className="flex justify-between text-[10px] text-gray-500 mt-1">
-                    <span>3 Quick</span>
-                    <span>15 Standard</span>
-                    <span>50 Comprehensive</span>
+                )}
+
+                {/* Number of MCQs Range Slider (Only for Topic Generation) */}
+                {sourceMode === 'topic' && (
+                  <div className="mt-6 pt-5 border-t border-white/[0.06]">
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Number of MCQs to Generate</label>
+                      <span className="text-xs font-mono font-bold text-indigo-400 bg-indigo-600/15 border border-indigo-500/20 px-2.5 py-0.5 rounded-lg">
+                        {numQuestions} Questions
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min={3}
+                      max={50}
+                      step={1}
+                      value={numQuestions}
+                      onChange={e => setNumQuestions(parseInt(e.target.value))}
+                      className="w-full accent-indigo-500 bg-white/10 rounded-lg cursor-pointer h-2"
+                    />
+                    <div className="flex justify-between text-[10px] text-gray-500 mt-1">
+                      <span>3 Quick</span>
+                      <span>15 Standard</span>
+                      <span>50 Comprehensive</span>
+                    </div>
                   </div>
-                </div>
+                )}
 
                 <div className="mt-8">
                   <button
@@ -445,19 +583,25 @@ export default function CreateTest() {
                     {loading ? (
                       <>
                         <Loader2 className="w-4 h-4 animate-spin text-white" />
-                        <span>AI Generating {numQuestions} {difficulty.toUpperCase()} MCQs with Explanations...</span>
+                        <span>
+                          {sourceMode === 'document'
+                            ? 'Extracting all available questions from document...'
+                            : `AI Generating ${numQuestions} ${difficulty.toUpperCase()} MCQs with Explanations...`}
+                        </span>
                       </>
                     ) : (
                       <>
                         <Sparkles className="w-4 h-4 text-indigo-200 group-hover:rotate-12 transition-transform" />
-                        <span>Generate Exam with AI</span>
+                        <span>{sourceMode === 'document' ? 'Extract All Questions & Build Exam' : 'Generate Exam with AI'}</span>
                         <ArrowRight className="w-4 h-4 text-indigo-200 ml-1" />
                       </>
                     )}
                   </button>
                   {loading && (
                     <p className="text-center text-xs text-indigo-300/80 mt-2.5 animate-pulse">
-                      Synthesizing questions, calculating distractors, and authoring educational explanations...
+                      {sourceMode === 'document'
+                        ? 'Parsing document text, identifying all questions, and structuring educational explanations...'
+                        : 'Synthesizing questions, calculating distractors, and authoring educational explanations...'}
                     </p>
                   )}
                 </div>
@@ -473,7 +617,12 @@ export default function CreateTest() {
               <div>
                 <div className="flex items-center gap-2">
                   <h2 className="text-lg font-bold text-white">Generated Exam Questions</h2>
-                  <span className="badge-green">{questions.length} Ready</span>
+                  <span className="badge-green">{questions.length} Questions</span>
+                  {sourceMode === 'document' && testConfig.enableQuestionPool && (
+                    <span className="badge-purple text-[10px] font-mono font-semibold">
+                      Pool: {testConfig.questionsPerStudent} of {questions.length} served
+                    </span>
+                  )}
                   <span className="badge-blue capitalize text-[10px] font-mono">{difficulty}</span>
                 </div>
                 <p className="text-xs text-gray-400 mt-1">
@@ -482,6 +631,13 @@ export default function CreateTest() {
               </div>
 
               <div className="flex items-center gap-3">
+                <button
+                  onClick={handleAddNewBlankQuestion}
+                  className="btn-secondary text-xs py-2 px-3 flex items-center gap-1.5 hover:border-indigo-500/50"
+                >
+                  <Plus className="w-3.5 h-3.5 text-indigo-400" />
+                  <span>Add Question</span>
+                </button>
                 <button
                   onClick={() => setStep('configure')}
                   className="btn-secondary text-xs py-2 px-3"

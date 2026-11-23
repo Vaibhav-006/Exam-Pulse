@@ -258,10 +258,25 @@ export default function TeacherDashboard() {
                         </div>
 
                         {/* Metadata row */}
-                        <div className="flex items-center gap-4 text-xs text-gray-400 flex-wrap">
-                          <span className="flex items-center gap-1.5"><BookOpen className="w-3.5 h-3.5" />{test.totalQuestions} questions</span>
+                        <div className="flex items-center gap-3 text-xs text-gray-400 flex-wrap">
+                          <span className="flex items-center gap-1.5">
+                            <BookOpen className="w-3.5 h-3.5" />
+                            {test.questionsPerStudent ? `${test.questionsPerStudent} of ${test.totalQuestions} pool` : `${test.totalQuestions} questions`}
+                          </span>
                           <span className="flex items-center gap-1.5"><Clock className="w-3.5 h-3.5" />{test.durationMins} min</span>
                           <span className="flex items-center gap-1.5"><Users className="w-3.5 h-3.5" />{test._count?.sessions || 0} students</span>
+
+                          {/* Anti-Cheating indicator pills */}
+                          {test.questionsPerStudent && (
+                            <span className="text-[10px] bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 px-2 py-0.5 rounded-md font-mono">
+                              Pool ({test.questionsPerStudent} Qs)
+                            </span>
+                          )}
+                          {(test.shuffleQuestions || test.shuffleOptions) && (
+                            <span className="text-[10px] bg-purple-500/10 border border-purple-500/20 text-purple-300 px-2 py-0.5 rounded-md font-mono flex items-center gap-1">
+                              🔀 Shuffled
+                            </span>
+                          )}
 
                           {/* Code Pill */}
                           <button

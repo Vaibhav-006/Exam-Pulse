@@ -28,9 +28,20 @@ router.post('/submit', async (req, res) => {
     const questionMap = {};
     questions.forEach(q => { questionMap[q.id] = q.correctOption; });
 
+    let assigned = null;
+    try {
+      if (session.assignedQuestions) assigned = JSON.parse(session.assignedQuestions);
+    } catch {}
+
+    const optionsMap = assigned?.optionsMap || {};
+    const totalQuestionsCount = assigned?.questionIds?.length || questions.length;
+
     let score = 0;
     const answerRecords = answers.map(a => {
-      const isCorrect = questionMap[a.questionId] === a.chosenOption;
+      // Map candidate's displayed option back to original option letter (if options were shuffled)
+      const qOptMap = optionsMap[a.questionId] || optionsMap[String(a.questionId)];
+      const originalOption = (qOptMap && a.chosenOption) ? (qOptMap[a.chosenOption] || a.chosenOption) : a.chosenOption;
+      const isCorrect = questionMap[a.questionId] === originalOption;
       if (isCorrect) score++;
       return {
         sessionId: session.id,
@@ -49,7 +60,7 @@ router.post('/submit', async (req, res) => {
       });
     }
 
-    const scorePercent = Math.round((score / questions.length) * 100);
+    const scorePercent = totalQuestionsCount > 0 ? Math.round((score / totalQuestionsCount) * 100) : 0;
 
     // Update session
     const updatedSession = await prisma.session.update({
@@ -61,14 +72,29 @@ router.post('/submit', async (req, res) => {
     if (updatedSession.test.showResultsNow) {
       const review = questions.map(q => {
         const userAns = answerRecords.find(a => a.questionId === q.id);
+        const qOptMap = optionsMap[q.id] || optionsMap[String(q.id)];
+
+        // Reconstruct exact shuffled options displayed to this candidate
+        const displayedOptions = qOptMap ? {
+          A: q['option' + qOptMap.A],
+          B: q['option' + qOptMap.B],
+          C: q['option' + qOptMap.C],
+          D: q['option' + qOptMap.D],
+        } : { A: q.optionA, B: q.optionB, C: q.optionC, D: q.optionD };
+
+        // Identify which displayed option slot corresponded to the original correct answer
+        const displayedCorrectOption = qOptMap
+          ? Object.keys(qOptMap).find(k => qOptMap[k] === q.correctOption) || q.correctOption
+          : q.correctOption;
+
         return {
           id: q.id,
           stem: q.stem,
-          options: { A: q.optionA, B: q.optionB, C: q.optionC, D: q.optionD },
+          options: displayedOptions,
           chosenOption: userAns?.chosenOption || null,
-          correctOption: q.correctOption,
+          correctOption: displayedCorrectOption,
           isCorrect: userAns ? userAns.isCorrect : false,
-          explanation: q.explanation || `Option ${q.correctOption} is correct.`,
+          explanation: q.explanation || `Option ${displayedCorrectOption} is correct.`,
           difficulty: q.difficulty || 'medium'
         };
       });
@@ -77,7 +103,7 @@ router.post('/submit', async (req, res) => {
         submitted: true,
         score: scorePercent,
         correct: score,
-        total: questions.length,
+        total: totalQuestionsCount,
         passed: scorePercent >= updatedSession.test.passingScore,
         review,
       });

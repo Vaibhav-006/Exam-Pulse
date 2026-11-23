@@ -17,23 +17,26 @@ model Teacher {
 }
 
 model Test {
-  id              Int       @id @default(autoincrement())
-  teacherId       Int
-  title           String
-  description     String?
-  joinCode        String    @unique
-  durationMins    Int       @default(30)
-  totalQuestions  Int       @default(10)
-  passingScore    Int       @default(50)
-  difficulty      String?   @default("medium")
-  status          String    @default("draft")
-  showResultsNow  Boolean   @default(true)
-  startsAt        DateTime?
-  endsAt          DateTime?
-  createdAt       DateTime  @default(now())
-  teacher         Teacher   @relation(fields: [teacherId], references: [id])
-  questions       Question[]
-  sessions        Session[]
+  id                  Int       @id @default(autoincrement())
+  teacherId           Int
+  title               String
+  description         String?
+  joinCode            String    @unique
+  durationMins        Int       @default(30)
+  totalQuestions      Int       @default(10)
+  passingScore        Int       @default(50)
+  difficulty          String?   @default("medium")
+  status              String    @default("draft")
+  showResultsNow      Boolean   @default(true)
+  shuffleQuestions    Boolean   @default(true)
+  shuffleOptions      Boolean   @default(true)
+  questionsPerStudent Int?
+  startsAt            DateTime?
+  endsAt              DateTime?
+  createdAt           DateTime  @default(now())
+  teacher             Teacher   @relation(fields: [teacherId], references: [id])
+  questions           Question[]
+  sessions            Session[]
 }
 
 model Question {
@@ -53,20 +56,21 @@ model Question {
 }
 
 model Session {
-  id             Int      @id @default(autoincrement())
-  testId         Int
-  studentName    String
-  rollNo         String?
-  studentToken   String   @unique
-  joinedAt       DateTime @default(now())
-  submittedAt    DateTime?
-  violationCount Int      @default(0)
-  status         String   @default("active")
-  abortReason    String?
-  allowRetest    Boolean  @default(false)
-  score          Int?
-  test           Test     @relation(fields: [testId], references: [id], onDelete: Cascade)
-  answers        Answer[]
+  id                Int      @id @default(autoincrement())
+  testId            Int
+  studentName       String
+  rollNo            String?
+  studentToken      String   @unique
+  joinedAt          DateTime @default(now())
+  submittedAt       DateTime?
+  violationCount    Int      @default(0)
+  status            String   @default("active")
+  abortReason       String?
+  allowRetest       Boolean  @default(false)
+  score             Int?
+  assignedQuestions String?
+  test              Test     @relation(fields: [testId], references: [id], onDelete: Cascade)
+  answers           Answer[]
 }
 
 model Answer {

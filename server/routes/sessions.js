@@ -6,6 +6,16 @@ import { authMiddleware } from '../middleware/auth.js';
 const router = express.Router();
 const prisma = new PrismaClient();
 
+// Utility: Fisher-Yates array shuffling
+function shuffleArray(array) {
+  const arr = [...array];
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
 // POST /api/sessions/join - student joins a test
 router.post('/join', async (req, res) => {
   const { joinCode, studentName, rollNo } = req.body;
@@ -61,13 +71,123 @@ router.post('/join', async (req, res) => {
             isAborted: true,
           });
         }
-        // If allowRetest is true, teacher allowed retest! We create a new attempt.
       } else if (existingSession.status === 'submitted') {
         return res.status(403).json({
           error: `An exam has already been submitted under Roll No. "${cleanRollNo}". Multiple attempts are not permitted.`,
         });
+      } else if (existingSession.status === 'active' && existingSession.assignedQuestions) {
+        // Resume existing active attempt with exact same assigned questions & options
+        try {
+          const assigned = JSON.parse(existingSession.assignedQuestions);
+          const qMap = new Map(test.questions.map(q => [q.id, q]));
+          const sanitizedQuestions = [];
+
+          assigned.questionIds.forEach((qid, idx) => {
+            const q = qMap.get(qid);
+            if (!q) return;
+            const qOptMap = assigned.optionsMap?.[qid];
+            if (qOptMap) {
+              sanitizedQuestions.push({
+                id: q.id,
+                stem: q.stem,
+                options: {
+                  A: q['option' + qOptMap.A],
+                  B: q['option' + qOptMap.B],
+                  C: q['option' + qOptMap.C],
+                  D: q['option' + qOptMap.D],
+                },
+                orderNum: idx,
+              });
+            } else {
+              sanitizedQuestions.push({
+                id: q.id,
+                stem: q.stem,
+                options: { A: q.optionA, B: q.optionB, C: q.optionC, D: q.optionD },
+                orderNum: idx,
+              });
+            }
+          });
+
+          return res.json({
+            sessionId: existingSession.id,
+            studentToken: existingSession.studentToken,
+            studentName: cleanName,
+            rollNo: cleanRollNo,
+            test: {
+              id: test.id,
+              title: test.title,
+              description: test.description,
+              durationMins: test.durationMins,
+              totalQuestions: sanitizedQuestions.length,
+              passingScore: test.passingScore,
+              showResultsNow: test.showResultsNow,
+              startsAt: test.startsAt,
+              endsAt: test.endsAt,
+              isPool: !!(test.questionsPerStudent && test.questionsPerStudent < test.questions.length),
+            },
+            questions: sanitizedQuestions,
+          });
+        } catch (e) {
+          // Fall through to re-generate if parse fails
+        }
       }
     }
+
+    // 1. Dynamic Question Pool / Subset Selection
+    let selectedQuestions = [...test.questions];
+    if (test.questionsPerStudent && test.questionsPerStudent > 0 && test.questionsPerStudent < test.questions.length) {
+      // Pick random subset from pool
+      selectedQuestions = shuffleArray(test.questions).slice(0, test.questionsPerStudent);
+    } else if (test.shuffleQuestions) {
+      // Full test with question order shuffling
+      selectedQuestions = shuffleArray(selectedQuestions);
+    }
+
+    // 2. Option Shuffling
+    const optionsMap = {};
+    const sanitizedQuestions = [];
+
+    selectedQuestions.forEach((q, idx) => {
+      if (test.shuffleOptions) {
+        const orig = [
+          { key: 'A', text: q.optionA },
+          { key: 'B', text: q.optionB },
+          { key: 'C', text: q.optionC },
+          { key: 'D', text: q.optionD },
+        ];
+        const shuffled = shuffleArray(orig);
+        optionsMap[q.id] = {
+          A: shuffled[0].key,
+          B: shuffled[1].key,
+          C: shuffled[2].key,
+          D: shuffled[3].key,
+        };
+        sanitizedQuestions.push({
+          id: q.id,
+          stem: q.stem,
+          options: {
+            A: shuffled[0].text,
+            B: shuffled[1].text,
+            C: shuffled[2].text,
+            D: shuffled[3].text,
+          },
+          orderNum: idx,
+        });
+      } else {
+        optionsMap[q.id] = { A: 'A', B: 'B', C: 'C', D: 'D' };
+        sanitizedQuestions.push({
+          id: q.id,
+          stem: q.stem,
+          options: { A: q.optionA, B: q.optionB, C: q.optionC, D: q.optionD },
+          orderNum: idx,
+        });
+      }
+    });
+
+    const assignedQuestionsPayload = JSON.stringify({
+      questionIds: selectedQuestions.map(q => q.id),
+      optionsMap,
+    });
 
     const studentToken = uuidv4();
     const session = await prisma.session.create({
@@ -77,16 +197,9 @@ router.post('/join', async (req, res) => {
         rollNo: cleanRollNo,
         studentToken,
         status: 'active',
+        assignedQuestions: assignedQuestionsPayload,
       },
     });
-
-    // Return test questions WITHOUT correct answers or explanations
-    const sanitizedQuestions = test.questions.map(q => ({
-      id: q.id,
-      stem: q.stem,
-      options: { A: q.optionA, B: q.optionB, C: q.optionC, D: q.optionD },
-      orderNum: q.orderNum,
-    }));
 
     res.json({
       sessionId: session.id,
@@ -98,11 +211,12 @@ router.post('/join', async (req, res) => {
         title: test.title,
         description: test.description,
         durationMins: test.durationMins,
-        totalQuestions: test.totalQuestions,
+        totalQuestions: sanitizedQuestions.length,
         passingScore: test.passingScore,
         showResultsNow: test.showResultsNow,
         startsAt: test.startsAt,
         endsAt: test.endsAt,
+        isPool: !!(test.questionsPerStudent && test.questionsPerStudent < test.questions.length),
       },
       questions: sanitizedQuestions,
     });
